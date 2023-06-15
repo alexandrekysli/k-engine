@@ -1,0 +1,23 @@
+{
+    "compilerOptions": {
+        "rootDir": "src",
+        "outDir": "dist",
+        "typeRoots": [
+            "./types/**/*"
+        ],
+        "target": "ES2016",
+        "noEmitOnError": true,
+        "strict": true,
+        "removeComments": true,
+        "module": "CommonJS",
+        "esModuleInterop": true,
+        "resolveJsonModule": true,
+        "skipLibCheck": true
+    },
+    "exclude": [
+        "node_module",
+        "pharix/**/*",
+        "dist/**/*",
+        "src/app/**/*"
+    ]
+}
