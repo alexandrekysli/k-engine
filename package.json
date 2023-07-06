@@ -9,7 +9,7 @@
     "typescript": "^5.1.3"
   },
   "scripts": {
-    "dev-full": "concurrently \"tsc -w\" \"nodemon dist/app.js\" -k -n \"TypeScipt, Nodemon\" -p \"[{name}]\" -c \"blue, green\"",
+    "dev-full": "concurrently \"tsc -w\" \"nodemon dist/app.js\" -k -n \"TS,ND\" -p \"[{name}]\" -c \"blue, green\"",
     "dev-ts": "tsc -w",
     "prod": "node dist/app.js"
   },
@@ -20,6 +20,7 @@
     "dotenv": "^16.1.4",
     "express": "^4.18.2",
     "express-session": "^1.17.3",
+    "helmet": "^7.0.0",
     "uuid": "^9.0.0"
   }
 }
