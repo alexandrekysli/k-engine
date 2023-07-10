@@ -14,7 +14,8 @@ export default (adlogs: Adlogs) => {
 
     /** ### Router dispatching ### */
     heavenRoute.route.get('/', async (req, res) => {
-        res.send('Welcome ' + req.socket.remoteAddress?.split('ff:')[1])
+
+        res.send('Welcome ' + req.socket.remoteAddress)
     })
 
     return heavenRoute.route

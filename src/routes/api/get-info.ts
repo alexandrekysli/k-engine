@@ -14,7 +14,6 @@ export default (adlogs: Adlogs) => {
 
     /** ### Router dispatching ### */
     heavenRoute.route.get('/', async (req, res) => {
-        console.log(req.session.cookie);
 
         res.json({
             name: 'kysli',
