@@ -4,11 +4,19 @@ import path from "node:path"
 
 import Adlogs from "./adlogs"
 import Tools from "../tools"
+import { MongoBase } from "./rock"
 
 import ExpressApp, { Express } from "express"
-import ExpressSession from "express-session";
+import ExpressSession from "express-session"
+import MongoStore from "connect-mongo"
 import Helmet from "helmet"
+import { v4 } from "uuid"
+import favicon from "serve-favicon";
 
+/** TS > express-session mistake resolved */
+declare module 'express-session' {
+    interface SessionData { heaven_know_footprint: string, archange_user: { footprint: string, expire: number } }
+}
 
 /**
  * # Heaven
@@ -16,18 +24,12 @@ import Helmet from "helmet"
  * k-engine
  */
 class Heaven {
-    private adlogs: Adlogs
     private webServer: Express | undefined
     private webLink: http.Server | undefined
-    private engineConfig: EngineConfigType
-
     /**
      * @param adlogs Master Event Hub for EDP
      */
-    constructor(adlogs: Adlogs, engineConfig: EngineConfigType) {
-        this.adlogs = adlogs
-        this.engineConfig = engineConfig
-    }
+    constructor(private adlogs: Adlogs, private engineConfig: EngineConfigType, private mongoBase: MongoBase, private archangeRequestAnalyser: any) { }
 
     /**
      * ###
@@ -46,6 +48,9 @@ class Heaven {
         this.webServer.disable('x-powered-by')
         if (this.engineConfig.http.https_mode) this.webServer.use(Helmet())
 
+        this.webServer.use(favicon(path.join(this.engineConfig.app_root, 'public', 'favicon.ico')))
+
+
         // -> Express session configuration
         this.webServer.use(ExpressSession({
             secret: this.engineConfig.http.session.secret,
@@ -54,8 +59,15 @@ class Heaven {
             cookie: {
                 secure: this.engineConfig.http.https_mode,
                 maxAge: this.engineConfig.http.session.cookie_lifetime
-            }
+            },
+            store: MongoStore.create({
+                client: this.mongoBase.client,
+                dbName: 'k-engine-session'
+            })
         }))
+
+        // -> Link archangeRequestAnalyser
+        this.webServer.use(this.archangeRequestAnalyser)
 
         // -> Start dynamic routing
         const routes = Tools.getFolderContentSync(path.join(this.engineConfig.app_root, '/routes'), 0, false)
@@ -77,7 +89,6 @@ class Heaven {
                     this.adlogs.writeRuntimeEvent({
                         type: "warning",
                         category: "heaven",
-                        date: new Date().getTime(),
                         message: `User want to access unavailable route : ${req.originalUrl}`
                     })
                 })
@@ -86,7 +97,6 @@ class Heaven {
                 this.adlogs.writeRuntimeEvent({
                     type: "info",
                     category: "heaven",
-                    date: new Date().getTime(),
                     message: 'Express server configuration complete'
                 })
             } else {
@@ -94,7 +104,6 @@ class Heaven {
                 this.adlogs.writeRuntimeEvent({
                     type: "warning",
                     category: "heaven",
-                    date: new Date().getTime(),
                     message: `Unabled to find main index router file at ${path.join(this.engineConfig.app_root, '/routes')}`
                 })
             }
@@ -103,7 +112,6 @@ class Heaven {
             this.adlogs.writeRuntimeEvent({
                 type: "warning",
                 category: "heaven",
-                date: new Date().getTime(),
                 message: `Unabled to find any router file at ${path.join(this.engineConfig.app_root, '/routes')}`
             })
         }
@@ -134,8 +142,7 @@ class Heaven {
                 this.adlogs.writeRuntimeEvent({
                     type: "info",
                     category: "heaven",
-                    date: new Date().getTime(),
-                    message: `Heaven server starting complete at port ${this.engineConfig.http.port}${this.engineConfig.http.interfaces ? ` on host ${this.engineConfig.http.interfaces.address}` : ''}`
+                    message: `Heaven server starting complete at < ${this.engineConfig.http.interfaces ? `${this.engineConfig.http.interfaces.address}:` : ':'}${this.engineConfig.http.port} >`
                 })
             }
         )
@@ -172,7 +179,6 @@ export class HeavenRouteBase {
                         this.adlogs.writeRuntimeEvent({
                             type: "warning",
                             category: "heaven",
-                            date: new Date().getTime(),
                             message: `Unabled to find any good index file at ${path.join(dirname, '/', route.name)}`
                         })
                     }
@@ -180,6 +186,8 @@ export class HeavenRouteBase {
             })
         }
     }
+
+    public makeUUID = () => v4()
 
 
 }

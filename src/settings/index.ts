@@ -5,7 +5,17 @@ import 'dotenv/config'
 
 
 // -> Check dotenv file
-const requireData = ['SERVER_INTERFACE', 'HTTPS_MODE', 'HTTP_PORT', 'HTTP_SESSION_SECRET', 'HTTP_SESSION_DAY_LIFE']
+const requireData = [
+    'SERVER_INTERFACE',
+    'HTTPS_MODE',
+    'HTTP_PORT',
+    'HTTP_SESSION_SECRET',
+    'HTTP_SESSION_DAY_LIFE',
+    'DATABASE_MONGO_USER',
+    'DATABASE_MONGO_PASS',
+    'DATABASE_MONGO_HOST'
+]
+
 let errorMessage: string | null
 
 for (let i = 0; i < requireData.length; i++) {
@@ -53,6 +63,7 @@ if (interfaceIndex !== -1) {
 } else if (process.env.SERVER_INTERFACE !== '' && interfaceIndex === -1) {
     errorMessage = `${process.env.SERVER_INTERFACE} defined at < SERVER_INTERFACE > in .env file not found`
 }
+console.log(encodeURIComponent(process.env.DATABASE_MONGO_URI || ''));
 
 
 /**
@@ -70,6 +81,19 @@ const engineConfig = () => {
             session: {
                 secret: process.env.HTTP_SESSION_SECRET,
                 cookie_lifetime: parseInt((process.env.HTTP_SESSION_DAY_LIFE || '0'), 10) * 86400000
+            }
+        },
+        archange: {
+            bucket: {
+                limit: { ip: 10, unknown: 20, auth: 30, client: 1000 },
+                frame_lifetime: 10
+            }
+        },
+        database: {
+            mongo: {
+                host: process.env.DATABASE_MONGO_HOST,
+                user: process.env.DATABASE_MONGO_USER,
+                password: encodeURIComponent(process.env.DATABASE_MONGO_PASS || '')
             }
         }
     } as EngineConfigType)

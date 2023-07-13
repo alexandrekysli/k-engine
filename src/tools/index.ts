@@ -1,5 +1,6 @@
 /* ### Load Node modules ### */
 import fs, { Dirent } from 'fs'
+import Crypto from "node:crypto"
 
 
 /**
@@ -105,5 +106,13 @@ export default class {
         } while (activeArray.includes(_hash))
 
         return _hash
+    }
+
+    /**
+     * Return a MD5 hash from specified value
+     * @param value text value to hash
+     */
+    static makeMD5 = (value: string) => {
+        return Crypto.createHash('md5').update(value).digest("hex")
     }
 }

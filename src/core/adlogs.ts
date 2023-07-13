@@ -14,10 +14,10 @@ export default class {
     constructor() {
         // -> Set listener
         this.hub.on('app-runtime', (data: RuntimeEvent) => {
-            console.log('ℹ️', data.message)
+            console.log(`${data.type === 'info' ? 'ℹ️' : data.type === 'stop' ? '❌' : '⚠️'}`, data.message)
 
             if (data.type === "stop") {
-                console.log('❌ Exit App')
+                console.log('😓 Exit App')
                 process.exit(1)
             }
 
@@ -34,6 +34,7 @@ export default class {
     /** ### Public methods ### */
 
     public writeRuntimeEvent = (data: RuntimeEvent) => {
+        data.date = Date.now()
         this.hub.emit('app-runtime', data)
     }
 
