@@ -63,7 +63,6 @@ if (interfaceIndex !== -1) {
 } else if (process.env.SERVER_INTERFACE !== '' && interfaceIndex === -1) {
     errorMessage = `${process.env.SERVER_INTERFACE} defined at < SERVER_INTERFACE > in .env file not found`
 }
-console.log(encodeURIComponent(process.env.DATABASE_MONGO_URI || ''));
 
 
 /**
@@ -85,8 +84,14 @@ const engineConfig = () => {
         },
         archange: {
             bucket: {
-                limit: { ip: 10, unknown: 20, auth: 30, client: 1000 },
+                limit: { ip: 10, unknown: 5, "auth-web": 30, "auth-api": 30, "trust-api": 0 },
                 frame_lifetime: 10
+            },
+            hell: {
+                delayed_time: 5 * 60 * 1000,
+                delayed_mode_before_ban_hour: 5,
+                blocked_time_ban_hour: (24 * 60 * 60 * 1000),
+                blocked_time_1x_dos: (10 * 1000)
             }
         },
         database: {

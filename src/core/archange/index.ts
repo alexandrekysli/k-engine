@@ -4,7 +4,7 @@ import Tools from "../../tools"
 import { MongoBase } from "../rock"
 import Modal from "./modal";
 
-import { Db } from "mongodb"
+import { Db, ObjectId } from "mongodb"
 import { NextFunction, Request, Response } from "express"
 import { v4 as uuid } from "uuid"
 import uap from "ua-parser-js";
@@ -18,14 +18,11 @@ import uap from "ua-parser-js";
 class Archange {
     private modal: Modal
     private activeCallerList: ArchangeCaller[] = []
-    private hellUserList: HellUser[] = []
+    private hellManager: Hell
 
     constructor(private adlogs: Adlogs, private engineConfig: EngineConfigType, mongoBase: MongoBase) {
         this.modal = new Modal(mongoBase.client)
-
-        // -> Init Data from DB
-        this.init()
-
+        this.hellManager = new Hell(adlogs, this.modal)
     }
 
     /**
@@ -33,14 +30,6 @@ class Archange {
      * PRIVATE METHODS
      * ###
      */
-
-    /** Finalise Archange load by retrieve old data from database */
-    private init = async () => {
-        const dbHellUser = await this.modal.getAllHellUser()
-        dbHellUser.forEach(user => {
-            this.hellUserList.push(user)
-        })
-    }
 
     /**
      * Retrieve specific data from resquest
@@ -84,21 +73,6 @@ class Archange {
     }
 
     /**
-     * Get a hell user with specified value
-     * @param value Hell user value to search
-     */
-    private getHellUser = (value: string) => {
-        const pos = this.hellUserList.findIndex(x => x.value === value)
-        if (pos !== -1) {
-            return {
-                index: pos,
-                data: this.hellUserList[pos]
-            }
-        } else return false
-    }
-
-
-    /**
      * ###
      * PUBLIC METHODS
      * ###
@@ -111,63 +85,96 @@ class Archange {
      * @param next Express next middleware
      */
     public expressRequestAnalyser = async (req: Request, res: Response, next: NextFunction) => {
+
+        // -> ### Own Method
+        const postAnalyserAction = async (caller: ArchangeCaller, originIndex: number, api: boolean) => {
+            //console.log(caller.callerOnHell, caller.getAllOrigins()[originIndex])
+            const origin = caller.getAllOrigins()[originIndex]
+            let hitBlocked = false
+            const blockedData = { to: 0 }
+            if (caller.callerOnHell && caller.callerOnHell.mode === 'BLOCKED') {
+                // -> Detect if stay end time is reach
+                const nowDate = Date.now()
+                if (caller.callerOnHell.to >= Date.now()) {
+                    // -> Stay end time isn't reach
+                    hitBlocked = true
+                    blockedData.to = caller.callerOnHell.to
+                } else {
+                    // -> Stay end time is reach
+                    hitBlocked = false
+                    await caller.refreshUser(-1)
+                }
+            } else if (origin.onHell && origin.onHell.mode === 'BLOCKED') {
+                // -> Detect if stay end time is reach
+                const nowDate = Date.now()
+                if (origin.onHell.to >= Date.now()) {
+                    // -> Stay end time isn't reach
+                    hitBlocked = true
+                    blockedData.to = origin.onHell.to
+                } else {
+                    // -> Stay end time is reach
+                    hitBlocked = false
+                    await caller.refreshUser(originIndex)
+                }
+            }
+
+            if (hitBlocked) {
+                res.status(403)
+                if (api) {
+                    res.json({
+                        archange: {
+                            state: false,
+                            hell: {
+                                mode: 'BLOCKED',
+                                to: blockedData.to
+                            }
+                        }
+                    })
+                } else res.send(`You have been banned from this platform until ${new Date(blockedData.to).toISOString()}`)
+            } else {
+                await caller.checkRequest(originIndex)
+
+                // -> Return to next express middleware
+                next()
+            }
+        }
+
+
         // -> Detect origin and caller
         const requestOrigin = this.getRequestOrigin(req)
         if (requestOrigin.type === 'ip') req.session.heaven_know_footprint = uuid()
-
-        // -> HELL USER DETECTION
-        const hellUser = this.getHellUser(requestOrigin.value)
-        if (hellUser) {
-            // -> User is in Hell
-            console.log('🔥 User in Hell');
-        } else {
-            // -> User is not in hell
-            console.log('🤖 User in Heaven');
-
-        }
 
         // -> ACTIVE USER DETECTION
         const activeCaller = this.getActiveCaller(requestOrigin.value)
         if (activeCaller !== false) {
             // -> Active caller detected
-            console.log('🤖 Old active caller');
-
             // -> CALLER WITH MULTIPLE ORIGIN DETECTION
             let actualOrigin = 0
             // -> Only with auth & ip caller type
-            if (['auth', 'ip'].includes(activeCaller.type))
-                actualOrigin = activeCaller.checkAddNewOrigin(requestOrigin, req.headers['user-agent'] || 'no-user-agent')
-
-            console.log('Actual origin', activeCaller.getAllOrigins()[actualOrigin]);
-            activeCaller.checkRequest(actualOrigin)
-
-
-            // -> Check Token Bucket Limitation
-            //console.log('Frame live end ', (activeCaller.getAllOrigins()[actualOrigin].bucket.timestamp + this.engineConfig.archange.bucket.frame_live > Date.now()));
-
+            if (['auth', 'ip'].includes(activeCaller.type)) actualOrigin = await activeCaller.checkAddNewOrigin(requestOrigin, req.headers['user-agent'] || 'no-user-agent')
+            await postAnalyserAction(activeCaller, actualOrigin, requestOrigin.api)
         } else {
             // -> New active caller detected
-            console.log('🤖 New active caller');
             const newCaller = new ArchangeCaller(
                 this.adlogs,
                 this.engineConfig,
-                this.hellUserList,
-                this.modal,
+                this.hellManager,
                 requestOrigin,
-                req.headers['user-agent'] || 'no-user-agent'
+                req.headers['user-agent'] || 'no-user-agent',
+                async () => {
+                    if (newCaller.authPass) {
+                        this.activeCallerList.push(newCaller)
+                    } else {
+                        this.adlogs.writeRuntimeEvent({
+                            category: "archange",
+                            message: `Possibly auth caller ursupation detected with value ${newCaller.value}`,
+                            type: "warning"
+                        })
+                    }
+                    await postAnalyserAction(newCaller, 0, requestOrigin.api)
+                }
             )
-            if (newCaller.authPass) this.activeCallerList.push(newCaller)
-            else {
-                this.adlogs.writeRuntimeEvent({
-                    category: "archange",
-                    message: `Possibly Caller auth ursupation detected with value ${newCaller.value}`,
-                    type: "warning"
-                })
-            }
         }
-
-        // -> Return to next express middleware
-        next()
     }
 }
 
@@ -179,20 +186,20 @@ class Archange {
  */
 class ArchangeCaller {
     public value: string
-    public type: 'ip' | 'unknown' | 'auth'
-    private origins: Origin[] = []
+    public type: "ip" | "unknown" | "auth-web" | "auth-api" | "trust-api"
     public authPass = true
-    private callerOnHell: HellUser | boolean = false
+    public callerOnHell: HellUser | null = null
+    private origins: Origin[] = []
 
-    constructor(private adlogs: Adlogs, private engineConfig: EngineConfigType, private HellUserList: HellUser[], private modal: Modal, requestOrigin: RequestOrigin, userAgent: string) {
+    constructor(private adlogs: Adlogs, private engineConfig: EngineConfigType, private hell: Hell, requestOrigin: RequestOrigin, userAgent: string, callback: () => void) {
         this.value = requestOrigin.value
-        this.type = requestOrigin.type as 'ip' | 'unknown' | 'auth'
+        this.type = requestOrigin.type as "ip" | "unknown" | "auth-web" | "auth-api" | "trust-api"
 
         // -> Detect if is auth user and check it
         if (requestOrigin.type === 'auth') {
 
         } else {
-            this.addNewOrigin(requestOrigin, userAgent, true)
+            this.addNewOrigin(requestOrigin, userAgent, true, callback)
         }
     }
 
@@ -208,20 +215,27 @@ class ArchangeCaller {
      * @param hash MD5 User Agent hash
      */
 
-    private addNewOrigin = async (requestOrigin: RequestOrigin, userAgentHeader: string, first: boolean) => {
+    private addNewOrigin = async (requestOrigin: RequestOrigin, userAgentHeader: string, first: boolean, callback: (() => void) | null) => {
+        if (first) {
+            const user = await this.hell.getHellUser(this.value)
+            this.callerOnHell = user || null
+        }
+
         const nowDate = Date.now()
+        const hash = Tools.makeMD5(`${userAgentHeader}:${this.value}@${requestOrigin.ip}`)
         this.origins.push({
             ip: requestOrigin.ip,
             last_access: nowDate,
             request_count: 1,
             bucket: {
-                token: this.engineConfig.archange.bucket.limit[requestOrigin.type as 'ip' | 'unknown' | 'auth' | 'client'] - 1,
+                token: this.engineConfig.archange.bucket.limit[requestOrigin.type as "ip" | "unknown" | "auth-web" | "auth-api" | "trust-api"],
                 timestamp: nowDate
             },
             since: nowDate,
-            hash: Tools.makeMD5(userAgentHeader),
+            hash: hash,
             ua: requestOrigin.ua,
-            onHell: await this.modal.getHellUserByValue(requestOrigin.value)
+            onHell: await this.hell.getHellUser(hash),
+            time_banned: { remain: this.engineConfig.archange.hell.delayed_mode_before_ban_hour, from: nowDate }
         })
 
         let message = ''
@@ -234,8 +248,7 @@ class ArchangeCaller {
             type: "info"
         })
 
-        console.log(this.origins[this.origins.length - 1].onHell);
-
+        if (callback) callback()
     }
 
     /**
@@ -249,13 +262,14 @@ class ArchangeCaller {
      * @param requestOrigin Data from request
      * @param hash MD5 User Agent hash
      */
-    public checkAddNewOrigin = (requestOrigin: RequestOrigin, userAgentHeader: string) => {
-        const newOriginHash = Tools.makeMD5(userAgentHeader)
+    public checkAddNewOrigin = async (requestOrigin: RequestOrigin, userAgentHeader: string) => {
+        const newOriginHash = Tools.makeMD5(`${userAgentHeader}${this.value}@${requestOrigin.ip}`)
         const index = this.origins.findIndex(x => x.hash === newOriginHash)
+        console.log(index);
 
         if (index !== -1) return 0
         else {
-            this.addNewOrigin(requestOrigin, userAgentHeader, false)
+            await this.addNewOrigin(requestOrigin, userAgentHeader, false, null)
             return this.origins.length - 1
         }
 
@@ -267,11 +281,19 @@ class ArchangeCaller {
     }
 
     /** Check Incoming request from specific caller origin */
-    public checkRequest = (originIndex: number) => {
+    public checkRequest = async (originIndex: number) => {
+        // -> Hell check
+        console.log(this.origins[originIndex].bucket.token)
+
+        // -> ### Own Method
         const resetToken = () => {
             this.origins[originIndex].bucket.token = this.engineConfig.archange.bucket.limit[this.type] - 1
             this.origins[originIndex].bucket.timestamp = this.origins[originIndex].last_access
             console.log(`🤖 Origin ${this.origins[originIndex].hash} token frame reset`)
+        }
+        const resetHourBanned = () => {
+            this.origins[originIndex].time_banned.remain = this.engineConfig.archange.hell.delayed_mode_before_ban_hour
+            this.origins[originIndex].time_banned.from = Date.now()
         }
 
         // -> Origin access writing
@@ -279,16 +301,50 @@ class ArchangeCaller {
         this.origins[originIndex].request_count++
         this.origins[originIndex].bucket.token--
 
-        const tokenFrameLive = Tools.timestampDiff(this.origins[originIndex].last_access, this.origins[originIndex].bucket.timestamp, 'second')
+        const tokenFrameLife = Tools.timestampDiff(this.origins[originIndex].last_access, this.origins[originIndex].bucket.timestamp, 'second')
 
         // -> Token bucket check
         const tokenEmpty = this.origins[originIndex].bucket.token < 0
 
-        if (tokenFrameLive <= this.engineConfig.archange.bucket.frame_lifetime) {
+        if (tokenFrameLife <= this.engineConfig.archange.bucket.frame_lifetime) {
             // -> TokenBucket frame life
             if (tokenEmpty) {
-                // -> No more TokenBucket
                 console.log(`❌ Origin ${this.origins[originIndex].hash} have no more token for this lifetime !`)
+                // -> No more TokenBucket
+                // -> Push Origin To Hell
+                if (this.origins[originIndex].onHell && this.origins[originIndex].onHell?.mode === 'DELAYED') {
+                    // -> Origin in Hell -> Ban 1H
+                    const origin = this.origins[originIndex]
+                    if (origin.onHell) {
+                        origin.onHell = await this.hell.updateUserOnHell(origin.onHell._id, {
+                            mode: "BLOCKED",
+                            lifetime: this.engineConfig.archange.hell.blocked_time_1x_dos,
+                            value: origin.hash
+                        })
+                    }
+                } else {
+                    // -> Not actually in Hell
+                    const diff = Tools.timestampDiff(Date.now(), this.origins[originIndex].time_banned.from, 'second')
+                    if (diff < 3600) this.origins[originIndex].time_banned.remain--
+
+                    if (this.origins[originIndex].time_banned.remain) {
+                        // -> 1xDOS detected -> Delay
+                        this.origins[originIndex].onHell = await this.hell.pushUserOnHell({
+                            mode: "DELAYED",
+                            lifetime: this.engineConfig.archange.hell.delayed_time,
+                            value: this.origins[originIndex].hash
+                        })
+                        if (diff > 3600) resetHourBanned()
+                    } else {
+                        // -> 5xDOS/H detected -> Ban
+                        this.origins[originIndex].onHell = await this.hell.pushUserOnHell({
+                            mode: "BLOCKED",
+                            lifetime: this.engineConfig.archange.hell.blocked_time_ban_hour,
+                            value: this.origins[originIndex].hash
+                        })
+                        resetHourBanned()
+                    }
+                }
                 resetToken()
                 return false
             } else return true
@@ -299,6 +355,116 @@ class ArchangeCaller {
         }
     }
 
+    public refreshUser = async (originIndex: number) => {
+        const origin = this.origins[originIndex]
+        if (originIndex !== -1 && origin) origin.onHell = await this.hell.getHellUser(origin.hash)
+        else if (originIndex === -1) this.callerOnHell = await this.hell.getHellUser(this.value)
+    }
+
 }
+
+
+/**
+ * # Hell Manager
+ * For Blacklist user management
+ * k-engine 
+ */
+class Hell {
+    constructor(private adlogs: Adlogs, private modal: Modal) {
+        // -> Remove old end stay in Hell
+        this.dropEndStayOnHell()
+    }
+
+    /**
+     * ###
+     * PRIVATE METHODS
+     * ###
+     */
+
+    private dropEndStayOnHell = async () => {
+        const dropCount = await this.modal.removeHellUserByEndStay(Date.now())
+        if (dropCount) {
+            this.adlogs.writeRuntimeEvent({
+                category: "archange",
+                message: `${dropCount} hell's stay have been drop because end time is reach`,
+                type: "info"
+            })
+        }
+    }
+
+    /**
+     * ###
+     * PUBLIC METHODS
+     * ###
+     */
+
+    /** Get specified user from Hell */
+    public getHellUser = async (userValue: string) => {
+        const user = await this.modal.getHellUserByValue(userValue)
+        if (!user) {
+            return null
+        } else {
+            if (user.to < Date.now()) {
+                // -> User's stay in Hell is finish -> Remove in DB
+                console.log(11111);
+
+                if (await this.modal.removeHellUserById(user._id)) {
+                    this.adlogs.writeRuntimeEvent({
+                        category: "archange",
+                        message: `Hell's stay end time is reach for ${userValue}`,
+                        type: "info"
+                    })
+                }
+                return null
+            } else return user
+        }
+    }
+
+    public pushUserOnHell = async (data: { value: string, mode: 'DELAYED' | 'BLOCKED', lifetime: number }) => {
+        const from = Date.now()
+        const to = (data.lifetime === 0 && 0) || from + data.lifetime
+        const insertedId = await this.modal.pushUserOnHell({
+            value: data.value,
+            mode: data.mode,
+            from: from,
+            to: to
+        })
+
+        const user = await this.modal.getUserById(insertedId)
+
+        if (user) {
+            this.adlogs.writeRuntimeEvent({
+                category: "archange",
+                message: `Adding < ${data.value} > in Hell with < ${data.mode} > mode`,
+                type: "warning"
+            })
+        }
+
+        return user
+    }
+
+    public updateUserOnHell = async (id: ObjectId, data: { value: string, mode: 'DELAYED' | 'BLOCKED', lifetime: number }) => {
+        const from = Date.now()
+        const to = (data.lifetime === 0 && 0) || from + data.lifetime
+
+        const user = await this.modal.updateUserOnHell(id, {
+            value: data.value,
+            mode: 'BLOCKED',
+            from: from,
+            to: to
+        })
+
+        if (user.ok) {
+            this.adlogs.writeRuntimeEvent({
+                category: "archange",
+                message: `Switch Hell mode to < ${data.mode} > for < ${data.value} >`,
+                type: "warning"
+            })
+        }
+
+        return user.value
+    }
+}
+
 
 export default Archange

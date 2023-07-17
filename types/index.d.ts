@@ -17,11 +17,18 @@ type EngineConfigType = {
             limit: {
                 ip: number,
                 unknown: number,
-                auth: number,
-                client: number
+                'auth-web': number,
+                'auth-api': number,
+                'trust-api': number
             },
             frame_lifetime: 10
         },
+        hell: {
+            delayed_time: number,
+            delayed_mode_before_ban_hour: number,
+            blocked_time_ban_hour: number,
+            blocked_time_1x_dos: number
+        }
 
     },
     database: {
@@ -54,7 +61,7 @@ type EventMessageListenner = {
 /** Archange */
 type HellUser = {
     _id: import("mongodb").ObjectId,
-    value: string, type: string, mode: string, since: number, end: number
+    mode: string, to: number, from: number
 }
 
 type Origin = {
@@ -71,8 +78,10 @@ type Origin = {
         browser: { name: string, version: string },
         os: { name: string, version: string }
     },
-    onHell: HellUser | null
+    onHell: HellUser | null,
+    time_banned: { remain: number, from: number }
 }
+
 type ActiveCaller = {
     type: string,
     value: string,
