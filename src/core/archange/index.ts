@@ -20,7 +20,11 @@ class Archange {
     private activeCallerList: ArchangeCaller[] = []
     private hellManager: Hell
 
-    constructor(private adlogs: Adlogs, private engineConfig: EngineConfigType, mongoBase: MongoBase) {
+    constructor(
+        private adlogs: Adlogs,
+        private engineConfig: EngineConfigType,
+        mongoBase: MongoBase
+    ) {
         this.modal = new Modal(mongoBase.client)
         this.hellManager = new Hell(adlogs, this.modal)
     }
@@ -130,7 +134,7 @@ class Archange {
                             }
                         }
                     })
-                } else res.send(`You have been banned from this platform until ${new Date(blockedData.to).toISOString()}`)
+                } else res.send(`You have been banned from this app until ${new Date(blockedData.to).toISOString()}`)
             } else {
                 await caller.checkRequest(originIndex)
 
@@ -177,7 +181,6 @@ class Archange {
         }
     }
 }
-
 
 
 /**
@@ -283,13 +286,10 @@ class ArchangeCaller {
     /** Check Incoming request from specific caller origin */
     public checkRequest = async (originIndex: number) => {
         // -> Hell check
-        console.log(this.origins[originIndex].bucket.token)
-
         // -> ### Own Method
         const resetToken = () => {
             this.origins[originIndex].bucket.token = this.engineConfig.archange.bucket.limit[this.type] - 1
             this.origins[originIndex].bucket.timestamp = this.origins[originIndex].last_access
-            console.log(`🤖 Origin ${this.origins[originIndex].hash} token frame reset`)
         }
         const resetHourBanned = () => {
             this.origins[originIndex].time_banned.remain = this.engineConfig.archange.hell.delayed_mode_before_ban_hour
@@ -309,11 +309,10 @@ class ArchangeCaller {
         if (tokenFrameLife <= this.engineConfig.archange.bucket.frame_lifetime) {
             // -> TokenBucket frame life
             if (tokenEmpty) {
-                console.log(`❌ Origin ${this.origins[originIndex].hash} have no more token for this lifetime !`)
                 // -> No more TokenBucket
                 // -> Push Origin To Hell
                 if (this.origins[originIndex].onHell && this.origins[originIndex].onHell?.mode === 'DELAYED') {
-                    // -> Origin in Hell -> Ban 1H
+                    // -> Origin in Hell [DELAYED] -> Ban 1H 
                     const origin = this.origins[originIndex]
                     if (origin.onHell) {
                         origin.onHell = await this.hell.updateUserOnHell(origin.onHell._id, {
@@ -336,7 +335,7 @@ class ArchangeCaller {
                         })
                         if (diff > 3600) resetHourBanned()
                     } else {
-                        // -> 5xDOS/H detected -> Ban
+                        // -> 5xDOS/H detected -> Ban 24H
                         this.origins[originIndex].onHell = await this.hell.pushUserOnHell({
                             mode: "BLOCKED",
                             lifetime: this.engineConfig.archange.hell.blocked_time_ban_hour,
@@ -394,7 +393,7 @@ class Hell {
 
     /**
      * ###
-     * PUBLIC METHODS
+     * PUBLIC METHODS 
      * ###
      */
 
@@ -406,7 +405,6 @@ class Hell {
         } else {
             if (user.to < Date.now()) {
                 // -> User's stay in Hell is finish -> Remove in DB
-                console.log(11111);
 
                 if (await this.modal.removeHellUserById(user._id)) {
                     this.adlogs.writeRuntimeEvent({

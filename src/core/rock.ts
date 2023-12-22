@@ -14,12 +14,10 @@ import { MongoClient } from "mongodb"
  */
 export class MongoBase {
     private adlogs: Adlogs
-    private engineConfig: EngineConfigType
     public client: MongoClient
 
     constructor(adlogs: Adlogs, engineConfig: EngineConfigType) {
         this.adlogs = adlogs
-        this.engineConfig = engineConfig
 
         // -> Make MongoDB connexion 
         this.client = new MongoClient(

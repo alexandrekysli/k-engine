@@ -84,14 +84,20 @@ const engineConfig = () => {
         },
         archange: {
             bucket: {
-                limit: { ip: 10, unknown: 5, "auth-web": 30, "auth-api": 30, "trust-api": 0 },
+                limit: {
+                    ip: 10,
+                    unknown: 20,
+                    "auth-web": 30,
+                    "auth-api": 30,
+                    "trust-api": 0
+                },
                 frame_lifetime: 10
             },
             hell: {
                 delayed_time: 5 * 60 * 1000,
                 delayed_mode_before_ban_hour: 5,
                 blocked_time_ban_hour: (24 * 60 * 60 * 1000),
-                blocked_time_1x_dos: (10 * 1000)
+                blocked_time_1x_dos: (1 * 60 * 60 * 1000)
             }
         },
         database: {

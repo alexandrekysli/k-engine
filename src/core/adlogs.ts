@@ -14,7 +14,7 @@ export default class {
     constructor() {
         // -> Set listener
         this.hub.on('app-runtime', (data: RuntimeEvent) => {
-            console.log(`${data.type === 'info' ? 'ℹ️' : data.type === 'stop' ? '❌' : '⚠️'}`, data.message)
+            console.log(`${data.type === 'info' ? '🚀' : data.type === 'stop' ? '❌' : '⚠️'}`, data.message)
 
             if (data.type === "stop") {
                 console.log('😓 Exit App')

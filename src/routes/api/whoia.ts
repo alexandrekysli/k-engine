@@ -3,8 +3,7 @@ import Adlogs from "../../core/adlogs"
 import { HeavenRouteBase } from "../../core/heaven"
 
 /**
- * # /api/get-info route
- * Heaven express route wrapper\
+ * # Heaven route
  * k-engine
  */
 

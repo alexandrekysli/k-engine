@@ -21,7 +21,7 @@ type EngineConfigType = {
                 'auth-api': number,
                 'trust-api': number
             },
-            frame_lifetime: 10
+            frame_lifetime: number
         },
         hell: {
             delayed_time: number,

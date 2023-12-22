@@ -2,9 +2,9 @@
 import http from "http"
 import path from "node:path"
 
-import Adlogs from "./adlogs"
-import Tools from "../tools"
-import { MongoBase } from "./rock"
+import Adlogs from "../adlogs"
+import Tools from "../../tools"
+import { MongoBase } from "../rock"
 
 import ExpressApp, { Express } from "express"
 import ExpressSession from "express-session"
@@ -77,7 +77,7 @@ class Heaven {
             // -> Route found
             if (indexPos !== -1 && this.webServer) {
                 // -> Index route found -> begin routing
-                const mainRoute = (await import('../routes')).default(this.adlogs)
+                const mainRoute = (await import('../../routes')).default(this.adlogs)
                 this.webServer.use('/', mainRoute)
 
                 // -> 404 page catching
